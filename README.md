@@ -16,6 +16,17 @@ All core architectural components and pretrained weights are preserved.
 Extensions in this repository focus on fine-tuning strategies, experimental
 design, and systematic analysis of model behavior.
 
+## Pretrained MethylGPT Models
+
+MethylGPT is a transformer-based foundation model pretrained on a large-scale
+corpus of human DNA methylation data. The pretraining dataset comprises
+226,555 DNA methylation profiles aggregated from 5,281 studies, collected
+through two complementary resources: EWAS Data Hub and Clockbase.
+
+This large and diverse corpus enables MethylGPT to learn contextual and
+transferable CpG representations across tissues, conditions, and biological
+contexts.
+
 ## Repository Structure
 - `methylgpt/` – core MethylGPT model (upstream or submodule)
 - `tutorials/` – original tutorials from the upstream repository
