@@ -1,0 +1,15 @@
+# data is external (symlinks only)
+data/**
+!data/README.md
+
+# outputs
+**/logs/
+**/checkpoints/
+wandb/
+slurm-*.out
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
