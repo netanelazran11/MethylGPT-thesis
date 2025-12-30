@@ -1,32 +1,18 @@
-import sys
 import os
 from pathlib import Path
-from typing import Union
-import json
+from typing import Dict, List, Sequence, Union
+
 import numpy as np
 import pandas as pd
-import polars as pls
 import torch
-import torch.nn.functional as F
-from torch import nn, optim
-from torchtext.vocab import Vocab
-from torchtext._torchtext import Vocab as VocabPybind
-from tqdm import tqdm
 
-from sklearn import preprocessing
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from scipy.stats import spearmanr, pearsonr
-
-import lightning as pl
-from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch import seed_everything
-
-# =============================
-# scGPT / MethylGPT imports
-# =============================
-import methylgpt.modules.scGPT.scgpt as scgpt
-from scgpt.model.model import AdversarialDiscriminator, TransformerModel
 from scgpt.tokenizer import tokenize_and_pad_batch, random_mask_value
+
+# Sanity checks: this dataset depends only on scGPT's tokenizer utilities.
+# If these fail, scGPT is not properly available in the current environment.
+assert callable(tokenize_and_pad_batch), "scGPT tokenizer `tokenize_and_pad_batch` is not available"
+assert callable(random_mask_value), "scGPT masking `random_mask_value` is not available"
+
 
 current_directory = Path(__file__).parent.absolute()
 
@@ -49,10 +35,12 @@ REPO_ROOT = find_repo_root(Path(__file__))
 # Optional: base directory for fine-tuning parquet files (can be set in the environment)
 # Example (Moriah):
 #   export METHYLGPT_FINETUNE_DATA_ROOT=/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT-Thesis/data/finetuning_data
-FINETUNE_DATA_ROOT = Path(os.environ.get(
-    "METHYLGPT_FINETUNE_DATA_ROOT",
-    "/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT-Thesis/data/finetuning_data",
-))
+FINETUNE_DATA_ROOT = Path(
+    os.environ.get(
+        "METHYLGPT_FINETUNE_DATA_ROOT",
+        "/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT-Thesis/data/finetuning_data",
+    )
+)
 
 
 def resolve_path(p: Union[str, Path], *bases: Path) -> Path:
@@ -70,6 +58,30 @@ def resolve_path(p: Union[str, Path], *bases: Path) -> Path:
             return cand
     # best-effort fallback
     return (bases[0] / p).resolve() if bases else p.resolve()
+
+
+class SimpleVocab:
+    """Minimal Vocab replacement for torchtext's Vocab.
+
+    We only rely on:
+      - __getitem__ for token -> index
+      - set_default_index
+      - attribute `stoi` (token->index)
+
+    This avoids torchtext private C++ bindings (`torchtext._torchtext`) which are often
+    incompatible across versions / builds on HPC.
+    """
+
+    def __init__(self, tokens: Sequence[str]):
+        self.itos: List[str] = list(tokens)
+        self.stoi: Dict[str, int] = {t: i for i, t in enumerate(self.itos)}
+        self._default_index: int = 0
+
+    def __getitem__(self, token: str) -> int:
+        return self.stoi.get(token, self._default_index)
+
+    def set_default_index(self, idx: int) -> None:
+        self._default_index = int(idx)
 
 
 class CollatableVocab(object):
@@ -94,7 +106,7 @@ class CollatableVocab(object):
 
         CpG_list = pd.read_csv(probe_csv)["illumina_probe_id"].values.tolist()
         CpG_ids = len(self.special_tokens) + np.arange(len(CpG_list))
-        vocab = Vocab(VocabPybind(self.special_tokens + CpG_list, None))
+        vocab = SimpleVocab(self.special_tokens + CpG_list)
         vocab.set_default_index(vocab["<pad>"])
         return vocab, CpG_ids
 
@@ -109,13 +121,13 @@ class Age_Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index: int):
         gen_data = self.gene_datas[index]
-        ages_label = torch.tensor(self.ages_label[index]).float()
+        ages_label = torch.tensor(self.ages_label[index], dtype=torch.float32)
         ages_label_norm = self.ages_label_norm[index]
         return gen_data, ages_label, ages_label_norm
 
     def collater(self, batch):
         gen_datas, ages_labels, ages_label_norms = tuple(zip(*batch))
-        gene_ids, masked_values, target_values = self.tokenize(torch.tensor(gen_datas))
+        gene_ids, masked_values, target_values = self.tokenize(torch.as_tensor(gen_datas))
         ages_labels = torch.stack(ages_labels)
         ages_label_norms = torch.stack(ages_label_norms)
         return gene_ids, masked_values, target_values, ages_labels, ages_label_norms
@@ -123,14 +135,13 @@ class Age_Dataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.ages_label)
 
-    def tokenize(self, data):
+    def tokenize(self, data: torch.Tensor):
         methyl_data = torch.nan_to_num(data, nan=self.vocab.pad_value)
-
-        if isinstance(methyl_data, torch.Tensor):
-            methyl_data = methyl_data.numpy()
+        # scGPT tokenizer expects numpy
+        methyl_np = methyl_data.detach().cpu().numpy()
 
         tokenized_data = tokenize_and_pad_batch(
-            methyl_data,
+            methyl_np,
             self.vocab.CpG_ids,
             max_len=self.vocab.max_seq_len,
             vocab=self.vocab.vocab,
@@ -145,10 +156,10 @@ class Age_Dataset(torch.utils.data.Dataset):
             mask_ratio=self.vocab.mask_ratio,
             mask_value=self.vocab.mask_value,
             pad_value=self.vocab.pad_value,
-            mask_seed=self.vocab.mask_seed
+            mask_seed=self.vocab.mask_seed,
         )
 
         return tokenized_data["genes"], masked_values, tokenized_data["values"]
 
-    def label_norm(self, data):
-        return torch.tensor(self.scaler.transform(data.reshape(-1, 1)), dtype=torch.float)
+    def label_norm(self, data: np.ndarray) -> torch.Tensor:
+        return torch.tensor(self.scaler.transform(data.reshape(-1, 1)), dtype=torch.float32)

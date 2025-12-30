@@ -1,5 +1,4 @@
 import os
-import sys
 from pathlib import Path
 import methylgpt.modules.scGPT.scgpt as scgpt
 current_directory = Path(__file__).parent.absolute()
@@ -10,8 +9,20 @@ import json
 import yaml
 import torch
 import lightning as pl
-from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch import seed_everything
+
+# Lightning import paths / strategy APIs can vary across 2.x installations.
+try:
+    from lightning.pytorch.loggers import WandbLogger
+    from lightning.pytorch import seed_everything
+    from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
+    from lightning.pytorch.strategies import DDPStrategy
+except Exception:  # pragma: no cover
+    # Fallback for environments that still expose PyTorch Lightning directly
+    from pytorch_lightning.loggers import WandbLogger  # type: ignore
+    from pytorch_lightning import seed_everything  # type: ignore
+    from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor  # type: ignore
+    from pytorch_lightning.strategies import DDPStrategy  # type: ignore
+
 from finetuning_age_datasets import CollatableVocab, Age_Dataset
 from finetuning_age_models import methyGPT_Age_Model
 
@@ -158,7 +169,7 @@ def train(args):
 
     if model_args["mode"] == "train":
 
-        checkpoint_callback = pl.pytorch.callbacks.ModelCheckpoint(
+        checkpoint_callback = ModelCheckpoint(
             dirpath=model_args["weights_save_path"],
             filename=model_args["weights_name"],
             monitor="valid_medae",
@@ -166,7 +177,7 @@ def train(args):
             save_top_k=1,
         )
 
-        lr_logger = pl.pytorch.callbacks.LearningRateMonitor()
+        lr_logger = LearningRateMonitor()
 
         if model_args["wandb"]:
             wandb_save_path = os.path.join(str(current_directory) + "/wandb",  model_args["version"])
@@ -187,7 +198,7 @@ def train(args):
             callbacks=[lr_logger, checkpoint_callback],
             gradient_clip_val=model_args["gradient_clip_val"],
             max_epochs=model_args["max_epochs"],
-            strategy="ddp_find_unused_parameters_true",
+            strategy=DDPStrategy(find_unused_parameters=True),
             log_every_n_steps=model_args["log_every_n_steps"],
             precision="bf16-mixed",
         )
@@ -202,7 +213,7 @@ def train(args):
             default_root_dir=current_directory,
             devices=1,
             accelerator="gpu",
-            strategy="ddp_find_unused_parameters_true",
+            strategy="auto",
             precision="bf16-mixed",
         )
 

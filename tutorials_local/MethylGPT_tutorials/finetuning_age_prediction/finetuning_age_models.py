@@ -1,15 +1,28 @@
-import sys
-from pathlib import Path
-import methylgpt.modules.scGPT.scgpt as scgpt
+from __future__ import annotations
 
-current_directory = Path(__file__).parent.absolute()
-from scgpt.model.model import TransformerModel
-from torch import nn, optim
+import math
+from pathlib import Path
+
 import numpy as np
 import torch
-import lightning as pl
-from fintuning_age_metrics import regression_metric
+from torch import nn
 import torch.optim as optim
+
+# Prefer Lightning 2.x namespace; keep fallback for environments that still expose pytorch_lightning.
+try:
+    import lightning as pl
+except Exception:  # pragma: no cover
+    import pytorch_lightning as pl  # type: ignore
+
+from scgpt.model.model import TransformerModel
+
+# Metrics module name is sometimes misspelled historically; support both.
+try:
+    from finetuning_age_metrics import regression_metric
+except Exception:  # pragma: no cover
+    from fintuning_age_metrics import regression_metric  # type: ignore
+
+current_directory = Path(__file__).parent.absolute()
 
 
 def conv1d_3x3(in_planes, out_planes, stride=1):
@@ -144,9 +157,10 @@ class methyGPT_Age_Model(pl.LightningModule):
         mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.squeeze())
         mae_loss_norm = mae_loss_norm.mean()
 
-        pred_age = torch.tensor(
-            self.scaler.inverse_transform(pred_age_norm.detach().to(torch.float).cpu().numpy().reshape(-1, 1))).to(
-            device=self.device)
+        pred_age_np = self.scaler.inverse_transform(
+            pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
+        )
+        pred_age = torch.from_numpy(pred_age_np).to(self.device)
 
         mse_loss = nn.MSELoss()(pred_age.squeeze(), ages_label)
         mse_loss = mse_loss.mean()
@@ -163,7 +177,7 @@ class methyGPT_Age_Model(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
         if dataloader_idx == 0:  # for valid set
             split = "valid"
             gene_id, masked_value, target_value, ages_label, ages_label_norm = batch
@@ -179,9 +193,10 @@ class methyGPT_Age_Model(pl.LightningModule):
             mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.squeeze())
             mae_loss_norm = mae_loss_norm.mean()
 
-            pred_age = torch.tensor(
-                self.scaler.inverse_transform(pred_age_norm.detach().to(torch.float).cpu().numpy().reshape(-1, 1))).to(
-                device=self.device)
+            pred_age_np = self.scaler.inverse_transform(
+                pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
+            )
+            pred_age = torch.from_numpy(pred_age_np).to(self.device)
 
             mse_loss = nn.MSELoss()(pred_age.squeeze(), ages_label)
             mse_loss = mse_loss.mean()
@@ -217,9 +232,10 @@ class methyGPT_Age_Model(pl.LightningModule):
             mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.squeeze())
             mae_loss_norm = mae_loss_norm.mean()
 
-            pred_age = torch.tensor(
-                self.scaler.inverse_transform(pred_age_norm.detach().to(torch.float).cpu().numpy().reshape(-1, 1))).to(
-                device=self.device)
+            pred_age_np = self.scaler.inverse_transform(
+                pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
+            )
+            pred_age = torch.from_numpy(pred_age_np).to(self.device)
 
             mse_loss = nn.MSELoss()(pred_age.squeeze(), ages_label)
             mse_loss = mse_loss.mean()
@@ -240,7 +256,7 @@ class methyGPT_Age_Model(pl.LightningModule):
 
             self.test_step_outputs.append(result)
 
-        return result
+        return result if isinstance(result, dict) else {}
 
     def on_validation_epoch_end(self):
         valid_metrics = regression_metric(self.valid_step_outputs)
@@ -312,8 +328,7 @@ class methyGPT_Age_Model(pl.LightningModule):
 
     def get_attention_map(self, model, gene_ids, values, h=4, layer=None):
         num_attn_layers = self.model_args["nlayers"] - 1
-        # Use inplace operations where possible
-        src_key_padding_mask = gene_ids.eq_(self.vocab.vocab[self.vocab.pad_token])
+        src_key_padding_mask = gene_ids.eq(self.vocab.vocab[self.vocab.pad_token])
 
         # Process embeddings in a memory-efficient way
         with torch.no_grad():  # Disable gradient tracking if not needed
@@ -330,7 +345,15 @@ class methyGPT_Age_Model(pl.LightningModule):
                 total_embs = layer(total_embs, src_key_padding_mask=src_key_padding_mask)
 
             # Get QKV more efficiently
-            qkv = model.transformer_encoder.layers[num_attn_layers].self_attn.Wqkv(total_embs)
+            attn_layer = model.transformer_encoder.layers[num_attn_layers].self_attn
+            if hasattr(attn_layer, "Wqkv"):
+                qkv = attn_layer.Wqkv(total_embs)
+            elif hasattr(attn_layer, "in_proj_weight") and hasattr(attn_layer, "in_proj_bias"):
+                qkv = nn.functional.linear(total_embs, attn_layer.in_proj_weight, attn_layer.in_proj_bias)
+            else:
+                raise AttributeError(
+                    "Unsupported attention module: expected `Wqkv` (scGPT fast/flash-attn) or `in_proj_weight` (PyTorch MHA)."
+                )
             del total_embs  # Free memory
 
             # Calculate attention scores in chunks if sequence length is large
@@ -339,8 +362,6 @@ class methyGPT_Age_Model(pl.LightningModule):
 
             # Reshape more memory efficiently
             qkv = qkv.view(b, s, 3, h, d)
-            for i in range(5):
-                print(f"d is {b, s, 3, h, d}")
 
             # Extract only Q and K, immediately delete qkv
             q = qkv[:, :, 0, :, :].contiguous()
@@ -352,7 +373,7 @@ class methyGPT_Age_Model(pl.LightningModule):
             k = k.permute(0, 2, 3, 1)
 
             # Normalize by sqrt(d_k) during the matrix multiplication
-            attn_scores = (q @ k)
+            attn_scores = (q @ k) / math.sqrt(d)
             del q, k  # Clean up
 
             # Optional: If memory is still an issue, you can process in chunks:
