@@ -14,5 +14,6 @@ set -euo pipefail
 
 source /sci/labs/benjamin.yakir/netanel.azran/venv_torch22/bin/activate
 export WANDB_API_KEY=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
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 cd /sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT-Thesis/scripts/finetuning_age_prediction_medium
 python finetuning_age_main.py
