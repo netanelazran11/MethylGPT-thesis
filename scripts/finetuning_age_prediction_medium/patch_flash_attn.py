@@ -13,8 +13,7 @@ MODEL_PATH = Path("/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT-Thesis
 OLD = """        self.self_attn = FlashMHA(
             embed_dim=d_model,
             num_heads=nhead,
-            batch_first=batch_first,
-            attention_dropout=dropout,
+            dropout=dropout,
             **factory_kwargs,
         )"""
 
