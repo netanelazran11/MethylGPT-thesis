@@ -2,10 +2,10 @@
     "seed": 42,
     "input_type": "CpGs_type3",
     "parquet_dir": "processed_dataset/processed_type3_parquet_shuffled",
-    "probe_id_dir": "/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/altumage_data/finetuning_data_21k/cpg_mapping/probe_ids_type3_21k.csv",
+    "probe_id_dir": "/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/cpg_ids/probe_ids_type3.csv",
     "qced_data_table": "QCed_samples_type3.csv",
     "valid_ratio": 0.1,
-    "n_hvg": 21368,
+    "n_hvg": 49156,
     "max_fi": 500000,
     "do_train": true,
     "load_model": null,
@@ -27,5 +27,5 @@
     "fast_transformer": true,
     "pre_norm": false,
     "amp": true,
-    "dataset": "finetune_21k_medium"
+    "dataset": "finetune_49k_medium"
 }
