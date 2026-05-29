@@ -14,13 +14,13 @@ import lightning as pl
 try:
     from lightning.pytorch.loggers import WandbLogger
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
+    from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
     from lightning.pytorch.strategies import DDPStrategy
 except Exception:  # pragma: no cover
     # Fallback for environments that still expose PyTorch Lightning directly
     from pytorch_lightning.loggers import WandbLogger  # type: ignore
     from pytorch_lightning import seed_everything  # type: ignore
-    from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor  # type: ignore
+    from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping  # type: ignore
     from pytorch_lightning.strategies import DDPStrategy  # type: ignore
 
 from finetuning_age_datasets import CollatableVocab, Age_Dataset
@@ -111,7 +111,7 @@ def train(args):
     )
 
     # ------------------------------------------------------------
-    # CLI overrides (kept minimal, like your original)
+    # CLI overrides
     # ------------------------------------------------------------
     model_args["mask_ratio"] = args.mask_ratio * 0.01
     model_args["mask_seed"] = args.mask_seed
@@ -179,6 +179,13 @@ def train(args):
 
         lr_logger = LearningRateMonitor()
 
+        early_stop_patience = int(model_args.get("early_stopping_patience", 0))
+        callbacks = [lr_logger, checkpoint_callback]
+        if early_stop_patience > 0:
+            callbacks.append(
+                EarlyStopping(monitor="valid_medae", patience=early_stop_patience, mode="min")
+            )
+
         if model_args["wandb"]:
             wandb_save_path = os.path.join(str(current_directory) + "/wandb",  model_args["version"])
             os.makedirs(wandb_save_path, exist_ok=True)
@@ -195,7 +202,7 @@ def train(args):
             logger=wandb_logger,
             devices=model_args["gpus"],
             accelerator="gpu",
-            callbacks=[lr_logger, checkpoint_callback],
+            callbacks=callbacks,
             gradient_clip_val=model_args["gradient_clip_val"],
             max_epochs=model_args["max_epochs"],
             strategy=DDPStrategy(find_unused_parameters=True),
@@ -213,7 +220,7 @@ def train(args):
             default_root_dir=current_directory,
             devices=1,
             accelerator="gpu",
-            strategy="auto",
+            strategy=DDPStrategy(find_unused_parameters=True),
             precision="bf16-mixed",
         )
 
