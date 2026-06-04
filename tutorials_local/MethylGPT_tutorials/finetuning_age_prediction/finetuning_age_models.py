@@ -388,8 +388,9 @@ class methyGPT_Age_Model(pl.LightningModule):
             return attn_scores
 
     def from_pretrained(self, model_args, vocab):
+        vocab_size = len(vocab.special_tokens) + len(vocab.CpG_ids)
         model = TransformerModel(
-            len(vocab.vocab),
+            vocab_size,
             model_args["layer_size"],
             model_args["nhead"],
             model_args["layer_size"],
