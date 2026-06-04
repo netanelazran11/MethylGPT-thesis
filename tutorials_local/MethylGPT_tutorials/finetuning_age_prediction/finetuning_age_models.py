@@ -151,20 +151,20 @@ class methyGPT_Age_Model(pl.LightningModule):
             pred_age_norm = self(gene_id, masked_value)
 
         # age prediction
-        pred_age_norm = pred_age_norm.squeeze()
-        mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.squeeze())
+        pred_age_norm = pred_age_norm.view(-1)
+        mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.view(-1))
         mse_loss_norm = mse_loss_norm.mean()
-        mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.squeeze())
+        mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.view(-1))
         mae_loss_norm = mae_loss_norm.mean()
 
         pred_age_np = self.scaler.inverse_transform(
             pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
         )
-        pred_age = torch.from_numpy(pred_age_np).to(self.device)
+        pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
 
-        mse_loss = nn.MSELoss()(pred_age.squeeze(), ages_label)
+        mse_loss = nn.MSELoss()(pred_age, ages_label.view(-1))
         mse_loss = mse_loss.mean()
-        mae_loss = nn.L1Loss()(pred_age.squeeze(), ages_label)
+        mae_loss = nn.L1Loss()(pred_age, ages_label.view(-1))
         mae_loss = mae_loss.mean()
 
         loss = mse_loss_norm
@@ -187,20 +187,20 @@ class methyGPT_Age_Model(pl.LightningModule):
                 pred_age_norm = self(gene_id, masked_value)
 
             # age prediction
-            pred_age_norm = pred_age_norm.squeeze()
-            mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.squeeze())
+            pred_age_norm = pred_age_norm.view(-1)
+            mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.view(-1))
             mse_loss_norm = mse_loss_norm.mean()
-            mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.squeeze())
+            mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.view(-1))
             mae_loss_norm = mae_loss_norm.mean()
 
             pred_age_np = self.scaler.inverse_transform(
                 pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
             )
-            pred_age = torch.from_numpy(pred_age_np).to(self.device)
+            pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
 
-            mse_loss = nn.MSELoss()(pred_age.squeeze(), ages_label)
+            mse_loss = nn.MSELoss()(pred_age, ages_label.view(-1))
             mse_loss = mse_loss.mean()
-            mae_loss = nn.L1Loss()(pred_age.squeeze(), ages_label)
+            mae_loss = nn.L1Loss()(pred_age, ages_label.view(-1))
             mae_loss = mae_loss.mean()
 
             self.log(f"{split}_mse_loss_norm", mse_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
@@ -209,10 +209,9 @@ class methyGPT_Age_Model(pl.LightningModule):
             self.log(f"{split}_mse_loss", mse_loss, prog_bar=True, sync_dist=True, on_epoch=True)
             self.log(f"{split}_mae_loss", mae_loss, prog_bar=True, sync_dist=True, on_epoch=True)
 
-            result = {}
             result = {
                 'pred_age': pred_age.detach().cpu(),
-                'label': ages_label.detach().cpu(),
+                'label': ages_label.view(-1).detach().cpu(),
             }
 
             self.valid_step_outputs.append(result)
@@ -226,20 +225,20 @@ class methyGPT_Age_Model(pl.LightningModule):
                 pred_age_norm = self(gene_id, masked_value)
 
             # age prediction
-            pred_age_norm = pred_age_norm.squeeze()
-            mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.squeeze())
+            pred_age_norm = pred_age_norm.view(-1)
+            mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.view(-1))
             mse_loss_norm = mse_loss_norm.mean()
-            mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.squeeze())
+            mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.view(-1))
             mae_loss_norm = mae_loss_norm.mean()
 
             pred_age_np = self.scaler.inverse_transform(
                 pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
             )
-            pred_age = torch.from_numpy(pred_age_np).to(self.device)
+            pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
 
-            mse_loss = nn.MSELoss()(pred_age.squeeze(), ages_label)
+            mse_loss = nn.MSELoss()(pred_age, ages_label.view(-1))
             mse_loss = mse_loss.mean()
-            mae_loss = nn.L1Loss()(pred_age.squeeze(), ages_label)
+            mae_loss = nn.L1Loss()(pred_age, ages_label.view(-1))
             mae_loss = mae_loss.mean()
 
             self.log(f"{split}_mse_loss_norm", mse_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
@@ -248,10 +247,9 @@ class methyGPT_Age_Model(pl.LightningModule):
             self.log(f"{split}_mse_loss", mse_loss, prog_bar=True, sync_dist=True, on_epoch=True)
             self.log(f"{split}_mae_loss", mae_loss, prog_bar=True, sync_dist=True, on_epoch=True)
 
-            result = {}
             result = {
                 'pred_age': pred_age.detach().cpu(),
-                'label': ages_label.detach().cpu(),
+                'label': ages_label.view(-1).detach().cpu(),
             }
 
             self.test_step_outputs.append(result)
