@@ -19,7 +19,6 @@ pretrained_lr: 1.0e-5
 head_lr: 1.0e-4
 train_batch_size: 1
 valid_batch_size: 1
-accumulate_grad_batches: 16
 max_epochs: 100
 early_stopping_patience: 25
 gpus: 1

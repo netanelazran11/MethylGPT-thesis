@@ -208,7 +208,6 @@ def train(args):
             strategy=DDPStrategy(find_unused_parameters=True),
             log_every_n_steps=model_args["log_every_n_steps"],
             precision="bf16-mixed",
-            accumulate_grad_batches=model_args.get("accumulate_grad_batches", 1),
         )
 
         trainer.fit(model, train_loader, [valid_loader, test_loader])
