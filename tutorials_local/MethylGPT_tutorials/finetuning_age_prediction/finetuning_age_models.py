@@ -43,17 +43,17 @@ class ResBlock1D(nn.Module):
             stride=1,
     ):
         super(ResBlock1D, self).__init__()
-        self.bn1 = nn.BatchNorm1d(in_planes)
+        self.bn1 = nn.InstanceNorm1d(in_planes, affine=True)
         self.relu1 = nn.ReLU(inplace=True)
         self.conv1 = conv1d_3x3(in_planes, out_planes, stride)
-        self.bn2 = nn.BatchNorm1d(out_planes)
+        self.bn2 = nn.InstanceNorm1d(out_planes, affine=True)
         self.relu2 = nn.ReLU(inplace=True)
         self.conv2 = conv1d_3x3(out_planes, out_planes)
 
         if stride > 1 or out_planes != in_planes:
             self.downsample = nn.Sequential(
                 conv1d_1x1(in_planes, out_planes, stride=stride, padding=0),
-                nn.BatchNorm1d(out_planes),
+                nn.InstanceNorm1d(out_planes, affine=True),
             )
         else:
             self.downsample = None
@@ -107,7 +107,7 @@ class ResNet1D(nn.Module):
                 nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.0)
-            elif classname.find('BatchNorm1d') != -1:
+            elif classname.find('InstanceNorm1d') != -1:
                 if m.affine:
                     nn.init.constant_(m.weight, 1.0)
                     nn.init.constant_(m.bias, 0.0)
@@ -128,6 +128,9 @@ class methyGPT_Age_Model(pl.LightningModule):
             model_args,
             vocab,
         )
+        if model_args.get("freeze_encoder", False):
+            for param in self.pretrained_model.parameters():
+                param.requires_grad = False
         self.age_head = ResNet1D(
             in_planes=model_args["layer_size"],
             main_planes=32,

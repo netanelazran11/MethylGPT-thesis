@@ -10,6 +10,7 @@ test_file:  "/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/altumage_data
 cpg_sites: 49156
 dataset: "49k"
 
+freeze_encoder: true
 mask_ratio: 0
 mlm_wt: 0
 weight_decay: 0.01
