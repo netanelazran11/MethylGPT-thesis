@@ -79,7 +79,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--probe_id_csv",
-        default="/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT/"
+        default="/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/"
                 "cpg_ids/probe_ids_type3.csv",
     )
     parser.add_argument(
