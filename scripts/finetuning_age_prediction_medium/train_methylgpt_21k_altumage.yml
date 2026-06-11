@@ -20,8 +20,8 @@ pretrained_lr: 1.0e-5
 head_lr: 3.0e-5
 train_batch_size: 1
 valid_batch_size: 1
-max_epochs: 100
-early_stopping_patience: 100
+max_epochs: 200
+early_stopping_patience: 200
 gpus: 1
 
 mode: "train"
