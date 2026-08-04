@@ -1,0 +1,29 @@
+project: "methylGPT_medium_21k_altumage_fold4"
+
+pretrained_file: "/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT/pretrained_models/large/methylGPT-medium/medium-best_model_epoch6.pt"
+weights_save_path: "/sci/labs/benjamin.yakir/netanel.azran/repos/MethylGPT-Thesis/scripts/finetuning_age_prediction_medium/checkpoints_21k_altumage_fold4"
+
+train_file: "/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/21k_altumage/finetuning_data_kfold/train_fold4.parquet"
+valid_file: "/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/21k_altumage/finetuning_data_kfold/valid_fold4.parquet"
+test_file:  "/sci/labs/benjamin.yakir/netanel.azran/MethylGPT/data/21k_altumage/finetuning_data_kfold/test.parquet"
+
+cpg_sites: 49156
+dataset: "21k_altumage_fold4"
+
+freeze_encoder: true
+mask_ratio: 0
+mlm_wt: 0
+weight_decay: 0.05
+gradient_clip_val: 0.5
+log_every_n_steps: 1
+pretrained_lr: 1.0e-5
+head_lr: 3.0e-5
+train_batch_size: 1
+valid_batch_size: 1
+max_epochs: 200
+early_stopping_patience: 200
+gpus: 1
+
+mode: "train"
+valid_ckpt_path: "None"
+wandb: True
