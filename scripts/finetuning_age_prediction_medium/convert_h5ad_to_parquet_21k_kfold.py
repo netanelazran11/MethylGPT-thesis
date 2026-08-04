@@ -33,9 +33,18 @@ import numpy as np
 import pandas as pd
 
 
+def _to_str(x) -> str:
+    # GSM-ID .npy files are sometimes saved as bytes (e.g. b"GSM1234567")
+    # rather than plain str, depending on how they were written; decode
+    # those instead of letting str() stringify the repr.
+    if isinstance(x, bytes):
+        return x.decode("utf-8")
+    return str(x)
+
+
 def load_gsm_ids(npy_path: Path) -> np.ndarray:
     ids = np.load(npy_path, allow_pickle=True)
-    id_arr = np.asarray([str(x) for x in ids], dtype=str)
+    id_arr = np.asarray([_to_str(x) for x in ids], dtype=str)
     if len(id_arr) != len(set(id_arr)):
         raise ValueError(f"{npy_path}: duplicate GSM IDs within the file itself")
     return id_arr
