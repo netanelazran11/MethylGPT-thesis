@@ -138,6 +138,9 @@ class methyGPT_Age_Model(pl.LightningModule):
         )
         self.valid_step_outputs = []
         self.test_step_outputs = []
+        # Set to "top1"/"top2"/"top3" before each post-hoc trainer.test() call so
+        # on_test_epoch_end logs distinctly per checkpoint (e.g. test_top1_medae).
+        self.current_test_tag = "test"
 
     def forward(self, gene_ids, values):
         embs = self.get_embeddings(self.pretrained_model, gene_ids, values)[:, 1:, :]
@@ -180,84 +183,48 @@ class methyGPT_Age_Model(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx: int = 0):
-        if dataloader_idx == 0:  # for valid set
-            split = "valid"
-            gene_id, masked_value, target_value, ages_label, ages_label_norm = batch
-            if self.model_args["mask_ratio"] == 0:
-                pred_age_norm = self(gene_id, target_value)
-            else:
-                pred_age_norm = self(gene_id, masked_value)
+    def validation_step(self, batch, batch_idx):
+        # Only the valid set is passed to trainer.fit() as the validation
+        # dataloader; the test set is intentionally excluded from the
+        # per-epoch loop and evaluated post-hoc, once per kept checkpoint,
+        # via test_step()/trainer.test() instead (see finetuning_age_main.py).
+        split = "valid"
+        gene_id, masked_value, target_value, ages_label, ages_label_norm = batch
+        if self.model_args["mask_ratio"] == 0:
+            pred_age_norm = self(gene_id, target_value)
+        else:
+            pred_age_norm = self(gene_id, masked_value)
 
-            # age prediction
-            pred_age_norm = pred_age_norm.view(-1)
-            mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.view(-1))
-            mse_loss_norm = mse_loss_norm.mean()
-            mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.view(-1))
-            mae_loss_norm = mae_loss_norm.mean()
+        # age prediction
+        pred_age_norm = pred_age_norm.view(-1)
+        mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.view(-1))
+        mse_loss_norm = mse_loss_norm.mean()
+        mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.view(-1))
+        mae_loss_norm = mae_loss_norm.mean()
 
-            pred_age_np = self.scaler.inverse_transform(
-                pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
-            )
-            pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
+        pred_age_np = self.scaler.inverse_transform(
+            pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
+        )
+        pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
 
-            mse_loss = nn.MSELoss()(pred_age, ages_label.view(-1))
-            mse_loss = mse_loss.mean()
-            mae_loss = nn.L1Loss()(pred_age, ages_label.view(-1))
-            mae_loss = mae_loss.mean()
+        mse_loss = nn.MSELoss()(pred_age, ages_label.view(-1))
+        mse_loss = mse_loss.mean()
+        mae_loss = nn.L1Loss()(pred_age, ages_label.view(-1))
+        mae_loss = mae_loss.mean()
 
-            self.log(f"{split}_mse_loss_norm", mse_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
-            self.log(f"{split}_loss_norm", mae_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
+        self.log(f"{split}_mse_loss_norm", mse_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
+        self.log(f"{split}_loss_norm", mae_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
 
-            self.log(f"{split}_mse_loss", mse_loss, prog_bar=True, sync_dist=True, on_epoch=True)
-            self.log(f"{split}_mae_loss", mae_loss, prog_bar=True, sync_dist=True, on_epoch=True)
+        self.log(f"{split}_mse_loss", mse_loss, prog_bar=True, sync_dist=True, on_epoch=True)
+        self.log(f"{split}_mae_loss", mae_loss, prog_bar=True, sync_dist=True, on_epoch=True)
 
-            result = {
-                'pred_age': pred_age.detach().cpu(),
-                'label': ages_label.view(-1).detach().cpu(),
-            }
+        result = {
+            'pred_age': pred_age.detach().cpu(),
+            'label': ages_label.view(-1).detach().cpu(),
+        }
 
-            self.valid_step_outputs.append(result)
-
-        elif dataloader_idx == 1:  # for test set
-            split = "test"
-            gene_id, masked_value, target_value, ages_label, ages_label_norm = batch
-            if self.model_args["mask_ratio"] == 0:
-                pred_age_norm = self(gene_id, target_value)
-            else:
-                pred_age_norm = self(gene_id, masked_value)
-
-            # age prediction
-            pred_age_norm = pred_age_norm.view(-1)
-            mse_loss_norm = nn.MSELoss()(pred_age_norm, ages_label_norm.view(-1))
-            mse_loss_norm = mse_loss_norm.mean()
-            mae_loss_norm = nn.L1Loss()(pred_age_norm, ages_label_norm.view(-1))
-            mae_loss_norm = mae_loss_norm.mean()
-
-            pred_age_np = self.scaler.inverse_transform(
-                pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
-            )
-            pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
-
-            mse_loss = nn.MSELoss()(pred_age, ages_label.view(-1))
-            mse_loss = mse_loss.mean()
-            mae_loss = nn.L1Loss()(pred_age, ages_label.view(-1))
-            mae_loss = mae_loss.mean()
-
-            self.log(f"{split}_mse_loss_norm", mse_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
-            self.log(f"{split}_loss_norm", mae_loss_norm, prog_bar=True, sync_dist=True, on_epoch=True)
-
-            self.log(f"{split}_mse_loss", mse_loss, prog_bar=True, sync_dist=True, on_epoch=True)
-            self.log(f"{split}_mae_loss", mae_loss, prog_bar=True, sync_dist=True, on_epoch=True)
-
-            result = {
-                'pred_age': pred_age.detach().cpu(),
-                'label': ages_label.view(-1).detach().cpu(),
-            }
-
-            self.test_step_outputs.append(result)
-
-        return result if isinstance(result, dict) else {}
+        self.valid_step_outputs.append(result)
+        return result
 
     def on_validation_epoch_end(self):
         valid_metrics = regression_metric(self.valid_step_outputs)
@@ -265,12 +232,37 @@ class methyGPT_Age_Model(pl.LightningModule):
             key = f"valid_{key}"
             self.log(key, value, prog_bar=True, on_epoch=True, sync_dist=True)
 
+        self.valid_step_outputs.clear()
+
+    def test_step(self, batch, batch_idx):
+        # Invoked only by the post-hoc trainer.test() calls in
+        # finetuning_age_main.py, once per top-k checkpoint (see
+        # self.current_test_tag), not during the training epoch loop.
+        gene_id, masked_value, target_value, ages_label, ages_label_norm = batch
+        if self.model_args["mask_ratio"] == 0:
+            pred_age_norm = self(gene_id, target_value)
+        else:
+            pred_age_norm = self(gene_id, masked_value)
+
+        pred_age_norm = pred_age_norm.view(-1)
+        pred_age_np = self.scaler.inverse_transform(
+            pred_age_norm.detach().to(torch.float32).cpu().numpy().reshape(-1, 1)
+        )
+        pred_age = torch.from_numpy(pred_age_np).view(-1).to(self.device)
+
+        result = {
+            'pred_age': pred_age.detach().cpu(),
+            'label': ages_label.view(-1).detach().cpu(),
+        }
+        self.test_step_outputs.append(result)
+        return result
+
+    def on_test_epoch_end(self):
         test_metrics = regression_metric(self.test_step_outputs)
         for key, value in test_metrics.items():
-            key = f"test_{key}"
+            key = f"test_{self.current_test_tag}_{key}"
             self.log(key, value, prog_bar=True, on_epoch=True, sync_dist=True)
 
-        self.valid_step_outputs.clear()
         self.test_step_outputs.clear()
 
     def configure_optimizers(self):

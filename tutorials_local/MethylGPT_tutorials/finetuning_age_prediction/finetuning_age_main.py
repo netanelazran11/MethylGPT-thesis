@@ -107,7 +107,6 @@ def train(args):
     model_args["weights_name"] = model_args["version"] + (
         "_{epoch:02d}-{step:02d}"
         "-{valid_medae:.4f}-{valid_mae:.4f}-{valid_s_r:.4f}"
-        "-{test_medae:.4f}-{test_mae:.4f}-{test_s_r:.4f}"
     )
 
     # ------------------------------------------------------------
@@ -174,7 +173,7 @@ def train(args):
             filename=model_args["weights_name"],
             monitor="valid_medae",
             mode="min",
-            save_top_k=1,
+            save_top_k=3,
         )
 
         lr_logger = LearningRateMonitor()
@@ -210,7 +209,23 @@ def train(args):
             precision="bf16-mixed",
         )
 
-        trainer.fit(model, train_loader, [valid_loader, test_loader])
+        trainer.fit(model, train_loader, valid_loader)
+
+        # ------------------------------------------------------------
+        # Post-hoc test evaluation: run the test set once per retained
+        # checkpoint (ranked by valid_medae, best first), instead of every
+        # training epoch. Logs test_top1_*, test_top2_*, ... to the same
+        # WandB run so results are next to the training curves.
+        # ------------------------------------------------------------
+        best_k_models = checkpoint_callback.best_k_models  # {ckpt_path: valid_medae}
+        ranked_ckpts = sorted(best_k_models.items(), key=lambda kv: kv[1].item())
+        for rank, (ckpt_path, valid_medae_score) in enumerate(ranked_ckpts, start=1):
+            print(f"Evaluating test set for rank {rank} checkpoint "
+                  f"(valid_medae={valid_medae_score.item():.4f}): {ckpt_path}")
+            state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+            model.load_state_dict(state_dict, strict=True)
+            model.current_test_tag = f"top{rank}"
+            trainer.test(model, dataloaders=test_loader)
 
     elif model_args["mode"] == "valid":
         model.load_state_dict(torch.load(model_args["valid_ckpt_path"], map_location="cpu")['state_dict'], strict=True)
@@ -224,7 +239,9 @@ def train(args):
             precision="bf16-mixed",
         )
 
-        trainer.validate(model, [valid_loader, test_loader])
+        trainer.validate(model, valid_loader)
+        model.current_test_tag = "test"
+        trainer.test(model, dataloaders=test_loader)
 
 
 if __name__ == '__main__':
