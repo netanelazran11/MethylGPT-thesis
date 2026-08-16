@@ -81,9 +81,12 @@ def find_best_checkpoint(weights_save_path: Path):
     filename -- Lightning's ModelCheckpoint embeds it there via the
     weights_name template in finetuning_age_main.py:
         "..._{epoch:02d}-{step:02d}-{valid_medae:.4f}-{valid_mae:.4f}-{valid_s_r:.4f}.ckpt"
+    Lightning auto-expands each "{name:.4f}" placeholder to "name=value" in the
+    actual filename (confirmed against real cluster output), e.g.:
+        ..._epoch=173-step=1174848-valid_medae=3.3403-valid_mae=5.4938-valid_s_r=0.9368.ckpt
     Prints every candidate found (auditable "why this checkpoint" evidence).
     """
-    pattern = re.compile(r"-(\d+\.\d{4})-(\d+\.\d{4})-(\d+\.\d{4})\.ckpt$")
+    pattern = re.compile(r"valid_medae=(\d+\.\d{4})-valid_mae=(\d+\.\d{4})-valid_s_r=(\d+\.\d{4})\.ckpt$")
     candidates = []
     for ckpt in sorted(weights_save_path.glob("*.ckpt")):
         m = pattern.search(ckpt.name)
