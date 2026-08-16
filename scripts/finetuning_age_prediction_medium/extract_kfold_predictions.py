@@ -133,6 +133,13 @@ def main():
         "--output_dir",
         default=str(SCRIPT_DIR.parent.parent / "outputs" / "bootstrap_predictions" / "methylgpt"),
     )
+    parser.add_argument(
+        "--no_amp", action="store_true",
+        help="Diagnostic: force fp32 inference instead of bf16-mixed autocast, to check "
+             "whether a bf16 precision-path mismatch (this script's manual autocast vs "
+             "Lightning's precision=\"bf16-mixed\" Trainer) explains a metric discrepancy "
+             "against the official WandB numbers for a given fold.",
+    )
     args = parser.parse_args()
     fold = args.fold
     train_yml = args.train_yml or str(SCRIPT_DIR / f"train_methylgpt_21k_altumage_fold{fold}.yml")
@@ -271,8 +278,11 @@ def main():
     # (see finetuning_age_main.py's pl.Trainer(...) config). Match it here
     # via autocast so this is a faithful reproduction, not an fp32
     # approximation of what actually produced the official numbers.
-    use_amp = device.type == "cuda"
-    log(f"Autocast bf16-mixed: {use_amp} (matches official precision=\"bf16-mixed\")")
+    # --no_amp forces fp32 instead, as a diagnostic for whether a bf16
+    # precision-path mismatch explains a metric discrepancy on a given fold.
+    use_amp = device.type == "cuda" and not args.no_amp
+    log(f"Autocast bf16-mixed: {use_amp}"
+        + (" (--no_amp: forced fp32)" if args.no_amp else " (matches official precision=\"bf16-mixed\")"))
 
     log(f"Running inference over {len(test_dataset)} test samples ...")
     all_preds = []
